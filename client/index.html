@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>SecureClip · Secure Link Transfer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <link rel="manifest" href="manifest.json" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <main class="container">
+
+    <!-- Header -->
+    <header class="header">
+      <h1> SecureClip</h1>
+      <p class="subtitle">
+        Securely transfer links & text from your phone to your laptop
+        <br />
+        <span>End-to-End Encrypted · Auto-Expires · One-Time Access</span>
+      </p>
+    </header>
+
+    <!-- Input Card -->
+    <section class="card">
+      <label for="text">Text or Link</label>
+      <textarea
+        id="text"
+        placeholder="Paste a URL, token, or sensitive text here…"
+      ></textarea>
+
+      <button onclick="send()">Generate Secure QR</button>
+
+      <p class="hint">
+        The data is encrypted in your browser and never stored in plain text.
+      </p>
+    </section>
+
+    <!-- Result Card -->
+    <section class="card result">
+      <h3 id="code"></h3>
+
+      <div class="qr-box">
+        <canvas id="qr"></canvas>
+      </div>
+
+      <p class="expiry">
+        ⏱ This QR code expires in <strong>30 seconds</strong> and can be used only once.
+      </p>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <p>
+        Built with ❤️ for security-first workflows ·
+        <span>SecureClip © 2026</span>
+      </p>
+    </footer>
+
+  </main>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+  <script src="app.js"></script>
+
+</body>
+</html>
