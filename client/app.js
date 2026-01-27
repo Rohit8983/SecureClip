@@ -1,6 +1,7 @@
-const API = "https://secureclip.onrender.com/";
+/* ================= CONFIG ================= */
+const API = "https://secureclip.onrender.com"; 
 
-/* ------------------ ENCRYPT ------------------ */
+/* ================= CRYPTO ================= */
 async function encrypt(text, password) {
   const enc = new TextEncoder();
 
@@ -17,7 +18,7 @@ async function encrypt(text, password) {
       name: "PBKDF2",
       salt: enc.encode("secureclip"),
       iterations: 100000,
-      hash: "SHA-256"
+      hash: "SHA-256",
     },
     keyMaterial,
     { name: "AES-GCM", length: 256 },
@@ -32,13 +33,14 @@ async function encrypt(text, password) {
     enc.encode(text)
   );
 
-  return btoa(JSON.stringify({
-    iv: Array.from(iv),
-    data: Array.from(new Uint8Array(encrypted))
-  }));
+  return btoa(
+    JSON.stringify({
+      iv: Array.from(iv),
+      data: Array.from(new Uint8Array(encrypted)),
+    })
+  );
 }
 
-/* ------------------ DECRYPT ------------------ */
 async function decrypt(payload, password) {
   const enc = new TextEncoder();
   const dec = new TextDecoder();
@@ -57,7 +59,7 @@ async function decrypt(payload, password) {
       name: "PBKDF2",
       salt: enc.encode("secureclip"),
       iterations: 100000,
-      hash: "SHA-256"
+      hash: "SHA-256",
     },
     keyMaterial,
     { name: "AES-GCM", length: 256 },
@@ -74,7 +76,7 @@ async function decrypt(payload, password) {
   return dec.decode(decrypted);
 }
 
-/* ------------------ SEND + QR ------------------ */
+/* ================= SEND + QR ================= */
 async function send() {
   const text = document.getElementById("text").value.trim();
   if (!text) return alert("Paste something first!");
@@ -82,36 +84,46 @@ async function send() {
   const code = Math.floor(100000 + Math.random() * 900000).toString();
   const payload = await encrypt(text, code);
 
-  await fetch(`${API}/store`, {
+  /* 🔐 Store securely */
+  const res = await fetch(`${API}/store`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ code, payload })
+    body: JSON.stringify({ code, payload }),
   });
+
+  if (!res.ok) {
+    alert("Backend error — QR not generated");
+    return;
+  }
 
   document.getElementById("code").innerText = `Code: ${code}`;
 
+  /* ✅ QR opens FETCH PAGE */
+  const qrURL = `${location.origin}/?code=${code}`;
+
   QRCode.toCanvas(
     document.getElementById("qr"),
-    `${location.origin}/#code=${code}`,
-    { width: 220 },
+    qrURL,
+    { width: 240 },
     (err) => {
       if (err) {
         console.error(err);
         alert("QR generation failed");
-      } else {
-        console.log("QR generated");
       }
     }
   );
 }
 
-/* ------------------ AUTO FETCH ------------------ */
+/* ================= AUTO FETCH ================= */
 (async () => {
-  const code = new URLSearchParams(location.hash.substring(1)).get("code");
+  const code = new URLSearchParams(window.location.search).get("code");
   if (!code) return;
 
   const res = await fetch(`${API}/fetch/${code}`);
-  if (!res.ok) return alert("Code expired or invalid");
+  if (!res.ok) {
+    alert("❌ Code expired or invalid");
+    return;
+  }
 
   const data = await res.json();
   const text = await decrypt(data.payload, code);
