@@ -12,7 +12,7 @@ The application is designed to minimize data exposure by enforcing short-lived a
 [https://secureclip-21.netlify.app/](https://secureclip-21.netlify.app/)
 
 **Desktop QR Scanner (Scan and Copy Data)**
-[https://secureclip-21.netlify.app/](https://secureclip-21.netlify.app/)
+[https://secureclip-21.netlify.app/](https://www.imagetotext.info/qr-code-scanner)
 
 Open the application on a desktop or laptop to scan the QR code and securely retrieve the transferred content.
 
