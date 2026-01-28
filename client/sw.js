@@ -1,5 +1,7 @@
-self.addEventListener("install", e => {
-  e.waitUntil(
-    caches.open("secureclip").then(cache => cache.addAll(["/", "/index.html", "/app.js"]))
-  );
+self.addEventListener("install", () => {
+  self.skipWaiting();
+});
+
+self.addEventListener("activate", () => {
+  self.clients.claim();
 });
