@@ -10,84 +10,85 @@
 </head>
 <body>
 
-  <main class="container">
+<main class="container">
 
-    <!-- Header -->
-    <header class="header">
-      <h1>SecureClip</h1>
-      <p class="subtitle">
-        Securely transfer text or files between devices
-        <br />
-        <span>End-to-End Encrypted · Auto-Expires · One-Time Access</span>
-      </p>
-    </header>
+  <!-- Header -->
+  <header class="header">
+    <h1>SecureClip</h1>
+    <p class="subtitle">
+      Securely transfer text or files between devices
+      <br />
+      <span>End-to-End Encrypted · Auto-Expires · One-Time Access</span>
+    </p>
+  </header>
 
-    <!-- INPUT -->
-    <section class="card">
-      <label for="text"><strong>Text (optional)</strong></label>
-      <textarea
-        id="text"
-        placeholder="Paste text here… (or upload a file below)"
-        aria-label="Secure text input"
-      ></textarea>
+  <!-- INPUT -->
+  <section class="card">
+    <label for="text"><strong>Text (optional)</strong></label>
+    <textarea
+      id="text"
+      placeholder="Paste text here… (or upload a file below)"
+      aria-label="Secure text input"
+    ></textarea>
 
-      <label for="file"><strong>File (optional)</strong></label>
-      <input type="file" id="file" />
+    <label for="file"><strong>File (optional)</strong></label>
+    <input type="file" id="file" />
 
-      <button onclick="send()">Generate Secure QR</button>
+    <button onclick="send()">Generate Secure QR</button>
 
-      <p class="hint">
-        Text and files are encrypted locally in your browser and never stored in plain text.
-      </p>
-    </section>
+    <p class="hint">
+      Text and files are encrypted locally in your browser and never stored in plain text.
+    </p>
+  </section>
 
-    <!-- RESULT -->
-    <section class="card result">
-      <h3 id="code" aria-live="polite"></h3>
+  <!-- RESULT -->
+  <section class="card result">
+    <h3 id="code" aria-live="polite"></h3>
 
-      <div class="qr-box">
-        <canvas id="qr"></canvas>
-      </div>
+    <div class="qr-box">
+      <canvas id="qr"></canvas>
+    </div>
 
-      <p class="expiry">
-        ⏱ Expires in <strong>30 seconds</strong> · One-time use only
-      </p>
-    </section>
+    <p class="expiry">
+      ⏱ Expires in <strong>30 seconds</strong> · One-time use only
+    </p>
+  </section>
 
-    <!-- SCAN -->
-    <section class="card scan">
-      <h3>📷 Scan SecureClip QR</h3>
-      <button onclick="startScan()">Start Camera Scan</button>
+  <!-- SCAN -->
+  <section class="card scan">
+    <h3>📷 Scan SecureClip QR</h3>
+    <button onclick="startScan()">Start Camera Scan</button>
 
-      <div id="reader"></div>
+    <div id="reader"></div>
 
-      <!-- ✅ REQUIRED USER ACTION BUTTON -->
-      <button
-        id="actionBtn"
-        style="display:none; margin-top:12px;"
-        aria-live="polite"
-      >
-        Tap to Copy / Download
-      </button>
+    <!-- Action button -->
+    <button
+      id="actionBtn"
+      disabled
+      style="display:none; margin-top:12px;"
+      aria-live="polite"
+    >
+      Processing…
+    </button>
 
-      <p class="hint">
-        After scanning, tap the button to copy text or download the file.
-      </p>
-    </section>
+    <p class="hint">
+      After scanning, tap the button to copy text or download the file.
+    </p>
+  </section>
 
-    <!-- Footer -->
-    <footer class="footer">
-      <p>
-        Built with ❤️ for security-first workflows · SecureClip © 2026
-      </p>
-    </footer>
+  <!-- Footer -->
+  <footer class="footer">
+    <p>
+      Built with ❤️ for security-first workflows · SecureClip © 2026
+    </p>
+  </footer>
 
-  </main>
+</main>
 
-  <!-- Scripts -->
-  <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
-  <script src="https://unpkg.com/html5-qrcode"></script>
-  <script src="app.js"></script>
+<!-- Scripts -->
+<script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+<script src="https://unpkg.com/html5-qrcode"></script>
+<script src="app.js"></script>
 
 </body>
 </html>
