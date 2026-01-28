@@ -14,7 +14,7 @@
 
     <!-- Header -->
     <header class="header">
-      <h1> SecureClip</h1>
+      <h1>SecureClip</h1>
       <p class="subtitle">
         Securely transfer links & text from your phone to your laptop
         <br />
@@ -22,46 +22,60 @@
       </p>
     </header>
 
-    <!-- Input Card -->
+    <!-- INPUT -->
     <section class="card">
-      <label for="text">Text or Link</label>
+      <label for="text"><strong>Text or Link</strong></label>
       <textarea
         id="text"
         placeholder="Paste a URL, token, or sensitive text here…"
+        aria-label="Secure text input"
       ></textarea>
 
       <button onclick="send()">Generate Secure QR</button>
 
       <p class="hint">
-        The data is encrypted in your browser and never stored in plain text.
+        Data is encrypted locally in your browser and never stored in plain text.
       </p>
     </section>
 
-    <!-- Result Card -->
+    <!-- RESULT -->
     <section class="card result">
-      <h3 id="code"></h3>
+      <h3 id="code" aria-live="polite"></h3>
 
       <div class="qr-box">
         <canvas id="qr"></canvas>
       </div>
 
       <p class="expiry">
-        ⏱ This QR code expires in <strong>30 seconds</strong> and can be used only once.
+        ⏱ Expires in <strong>30 seconds</strong> · One-time use only
+      </p>
+    </section>
+
+    <!-- SCAN -->
+    <section class="card scan">
+      <h3>📷 Scan SecureClip QR</h3>
+      <button onclick="startScan()">Start Camera Scan</button>
+
+      <!-- MUST exist for scanner -->
+      <div id="reader"></div>
+
+      <p class="hint">
+        Scan a SecureClip QR to instantly copy content to your clipboard.
       </p>
     </section>
 
     <!-- Footer -->
     <footer class="footer">
       <p>
-        Built with ❤️ for security-first workflows ·
-        <span>SecureClip © 2026</span>
+        Built with ❤️ for security-first workflows · SecureClip © 2026
       </p>
     </footer>
 
   </main>
 
-  <!-- Scripts -->
+  <!-- IMPORTANT: script order matters -->
   <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+  <script src="https://unpkg.com/html5-qrcode"></script>
   <script src="app.js"></script>
 
 </body>

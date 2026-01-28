@@ -1,5 +1,25 @@
 /* ================= CONFIG ================= */
-const API = "https://secureclip.onrender.com"; 
+const API = "https://secureclip.onrender.com";
+
+/* ================= HELPERS ================= */
+const $ = (id) => document.getElementById(id);
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+/* ================= WAKE BACKEND ================= */
+// 🔥 Prevent Render cold-start failures
+fetch(`${API}/health`).catch(() => {});
+
+/* ================= RETRY FETCH ================= */
+async function retryFetch(url, options = {}, retries = 3) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const res = await fetch(url, options);
+      if (res.ok) return res;
+    } catch {}
+    await sleep(3000); // wait before retry
+  }
+  throw new Error("Backend unavailable");
+}
 
 /* ================= CRYPTO ================= */
 async function encrypt(text, password) {
@@ -18,7 +38,7 @@ async function encrypt(text, password) {
       name: "PBKDF2",
       salt: enc.encode("secureclip"),
       iterations: 100000,
-      hash: "SHA-256",
+      hash: "SHA-256"
     },
     keyMaterial,
     { name: "AES-GCM", length: 256 },
@@ -33,12 +53,10 @@ async function encrypt(text, password) {
     enc.encode(text)
   );
 
-  return btoa(
-    JSON.stringify({
-      iv: Array.from(iv),
-      data: Array.from(new Uint8Array(encrypted)),
-    })
-  );
+  return btoa(JSON.stringify({
+    iv: Array.from(iv),
+    data: Array.from(new Uint8Array(encrypted))
+  }));
 }
 
 async function decrypt(payload, password) {
@@ -59,7 +77,7 @@ async function decrypt(payload, password) {
       name: "PBKDF2",
       salt: enc.encode("secureclip"),
       iterations: 100000,
-      hash: "SHA-256",
+      hash: "SHA-256"
     },
     keyMaterial,
     { name: "AES-GCM", length: 256 },
@@ -78,37 +96,65 @@ async function decrypt(payload, password) {
 
 /* ================= SEND + QR ================= */
 async function send() {
-  const text = document.getElementById("text").value.trim();
+  const text = $("text").value.trim();
   if (!text) return alert("Paste something first!");
 
   const code = Math.floor(100000 + Math.random() * 900000).toString();
   const payload = await encrypt(text, code);
 
-  /* 🔐 Store securely */
-  const res = await fetch(`${API}/store`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ code, payload }),
-  });
+  let stored = false;
 
-  if (!res.ok) {
-    alert("Backend error — QR not generated");
-    return;
+  try {
+    await retryFetch(`${API}/store`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, payload })
+    });
+    stored = true;
+  } catch {
+    console.warn("Backend sleeping, QR still generated");
   }
 
-  document.getElementById("code").innerText = `Code: ${code}`;
-
-  /* ✅ QR opens FETCH PAGE */
-  const qrURL = `${location.origin}/?code=${code}`;
+  $("code").innerText = stored
+    ? `Code: ${code}`
+    : `⚠ Backend waking up… retry in a few seconds`;
 
   QRCode.toCanvas(
-    document.getElementById("qr"),
-    qrURL,
-    { width: 240 },
-    (err) => {
-      if (err) {
-        console.error(err);
-        alert("QR generation failed");
+    $("qr"),
+    `${location.origin}/?code=${code}`,
+    { width: 240 }
+  );
+}
+
+/* ================= QR SCAN ================= */
+let scanner = null;
+
+function startScan() {
+  if (scanner) return;
+
+  scanner = new Html5Qrcode("reader");
+
+  scanner.start(
+    { facingMode: "environment" },
+    { fps: 10, qrbox: 250 },
+    async (decodedText) => {
+      await scanner.stop();
+      scanner = null;
+
+      try {
+        const url = new URL(decodedText);
+        const code = url.searchParams.get("code");
+        if (!code) throw "Invalid QR";
+
+        const res = await retryFetch(`${API}/fetch/${code}`);
+        const { payload } = await res.json();
+
+        const text = await decrypt(payload, code);
+        await navigator.clipboard.writeText(text);
+
+        alert("✅ SecureClip copied to clipboard");
+      } catch {
+        alert("❌ Code expired or backend unavailable");
       }
     }
   );
@@ -116,18 +162,18 @@ async function send() {
 
 /* ================= AUTO FETCH ================= */
 (async () => {
-  const code = new URLSearchParams(window.location.search).get("code");
+  const code = new URLSearchParams(location.search).get("code");
   if (!code) return;
 
-  const res = await fetch(`${API}/fetch/${code}`);
-  if (!res.ok) {
-    alert("❌ Code expired or invalid");
-    return;
+  try {
+    const res = await retryFetch(`${API}/fetch/${code}`);
+    const { payload } = await res.json();
+
+    const text = await decrypt(payload, code);
+    await navigator.clipboard.writeText(text);
+
+    alert("✅ SecureClip copied to clipboard");
+  } catch {
+    alert("❌ Code expired or backend unavailable");
   }
-
-  const data = await res.json();
-  const text = await decrypt(data.payload, code);
-
-  await navigator.clipboard.writeText(text);
-  alert("✅ Securely copied to clipboard");
 })();

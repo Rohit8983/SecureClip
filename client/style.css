@@ -135,3 +135,13 @@ canvas {
   font-size: 0.7rem;
   color: #94a3b8;
 }
+#reader {
+  width: 260px;
+  margin: 15px auto;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.scan button {
+  margin-top: 10px;
+}
