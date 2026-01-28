@@ -1,12 +1,7 @@
-/* ================= CONFIG ================= */
 const API = "https://secureclip.onrender.com";
 
-/* ================= GLOBAL ================= */
-let alreadyFetched = false;
-let pendingPayload = null;
-let pendingMeta = null;
+let scannedCode = null;
 
-/* ================= HELPERS ================= */
 const $ = (id) => document.getElementById(id);
 
 /* ================= CRYPTO ================= */
@@ -37,7 +32,6 @@ async function deriveKey(password) {
 async function encrypt(buffer, password) {
   const key = await deriveKey(password);
   const iv = crypto.getRandomValues(new Uint8Array(12));
-
   const encrypted = await crypto.subtle.encrypt(
     { name: "AES-GCM", iv },
     key,
@@ -45,8 +39,8 @@ async function encrypt(buffer, password) {
   );
 
   return btoa(JSON.stringify({
-    iv: Array.from(iv),
-    data: Array.from(new Uint8Array(encrypted))
+    iv: [...iv],
+    data: [...new Uint8Array(encrypted)]
   }));
 }
 
@@ -66,17 +60,12 @@ async function send() {
   const text = $("text").value.trim();
   const file = $("file").files[0];
 
-  if (!text && !file) {
-    return alert("Enter text or upload a file");
-  }
+  if (!text && !file) return alert("Add text or file");
 
   const code = Math.floor(100000 + Math.random() * 900000).toString();
   let payload, meta;
 
   if (file) {
-    if (file.size > 500 * 1024) {
-      return alert("Max file size is 500KB");
-    }
     payload = await encrypt(await file.arrayBuffer(), code);
     meta = { type: "file", name: file.name, mime: file.type };
   } else {
@@ -98,76 +87,60 @@ async function send() {
   );
 }
 
-/* ================= HANDLE PAYLOAD (SAFE) ================= */
-function prepareAction(decrypted, meta) {
-  pendingPayload = decrypted;
-  pendingMeta = meta;
-
-  const btn = $("actionBtn");
-  btn.style.display = "block";
-
-  btn.onclick = async () => {
-    btn.style.display = "none";
-
-    if (pendingMeta.type === "file") {
-      const blob = new Blob([pendingPayload], { type: pendingMeta.mime });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = pendingMeta.name;
-      a.click();
-      URL.revokeObjectURL(url);
-    } else {
-      const text = new TextDecoder().decode(pendingPayload);
-      await navigator.clipboard.writeText(text);
-      alert("✅ Text copied");
-    }
-
-    pendingPayload = null;
-    pendingMeta = null;
-  };
-}
-
 /* ================= QR SCAN ================= */
-let scanner = null;
-
 function startScan() {
-  if (scanner) return;
+  const scanner = new Html5Qrcode("reader");
 
-  scanner = new Html5Qrcode("reader");
   scanner.start(
     { facingMode: "environment" },
     { fps: 10, qrbox: 250 },
-    async (decodedText) => {
-      await scanner.stop();
-      scanner = null;
-
-      if (alreadyFetched) return;
-      alreadyFetched = true;
+    decodedText => {
+      scanner.stop();
 
       const url = new URL(decodedText);
-      const code = url.searchParams.get("code");
-      if (!code) return alert("Invalid QR");
+      scannedCode = url.searchParams.get("code");
 
-      const res = await fetch(`${API}/fetch/${code}`);
-      const { payload, meta } = await res.json();
+      if (!scannedCode) {
+        alert("Invalid QR");
+        return;
+      }
 
-      const decrypted = await decrypt(payload, code);
-      prepareAction(decrypted, meta);
+      const btn = $("actionBtn");
+      btn.style.display = "block";
+      btn.innerText = "Tap to Copy / Download";
     }
   );
 }
 
-/* ================= AUTO FETCH ================= */
-(async () => {
-  const code = new URLSearchParams(location.search).get("code");
-  if (!code || alreadyFetched) return;
+/* ================= USER ACTION ================= */
+document.addEventListener("DOMContentLoaded", () => {
+  $("actionBtn").onclick = async () => {
+    if (!scannedCode) return;
 
-  alreadyFetched = true;
+    $("actionBtn").innerText = "Processing…";
 
-  const res = await fetch(`${API}/fetch/${code}`);
-  const { payload, meta } = await res.json();
+    try {
+      const res = await fetch(`${API}/fetch/${scannedCode}`);
+      const { payload, meta } = await res.json();
 
-  const decrypted = await decrypt(payload, code);
-  prepareAction(decrypted, meta);
-})();
+      const decrypted = await decrypt(payload, scannedCode);
+
+      if (meta.type === "file") {
+        const blob = new Blob([decrypted], { type: meta.mime });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = meta.name;
+        a.click();
+      } else {
+        const text = new TextDecoder().decode(decrypted);
+        await navigator.clipboard.writeText(text);
+        alert("✅ Text copied");
+      }
+    } catch {
+      alert("❌ Code expired or invalid");
+    }
+
+    $("actionBtn").style.display = "none";
+    scannedCode = null;
+  };
+});

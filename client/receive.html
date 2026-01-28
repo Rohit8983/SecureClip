@@ -1,18 +1,25 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>SecureClip · Receiving</title>
+  <title>SecureClip · Receive</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <main class="container">
-    <div class="card result">
-      <h2>SecureClip</h2>
-      <p id="status">Fetching secure content…</p>
-    </div>
-  </main>
-  <script src="app.js"></script>
+
+<main class="container">
+  <div class="card result">
+    <h2>SecureClip</h2>
+    <p id="status">Secure content detected.</p>
+
+    <!-- REQUIRED USER ACTION -->
+    <button id="actionBtn">
+      Tap to Copy / Download
+    </button>
+  </div>
+</main>
+
+<script src="app.js"></script>
 </body>
 </html>
