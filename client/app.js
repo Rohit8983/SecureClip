@@ -1,6 +1,9 @@
 /* ================= CONFIG ================= */
 const API = "https://secureclip.onrender.com";
 
+/* ================= GLOBAL GUARD ================= */
+let alreadyFetched = false;
+
 /* ================= HELPERS ================= */
 const $ = (id) => document.getElementById(id);
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -77,42 +80,32 @@ async function send() {
   const text = $("text").value.trim();
   const file = $("file")?.files?.[0];
 
-  if (!text && !file) {
-    return alert("Paste text or upload a file");
-  }
+  if (!text && !file) return alert("Paste text or upload a file");
 
   const code = Math.floor(100000 + Math.random() * 900000).toString();
   let payload, meta;
 
   if (file) {
-    if (file.size > 500 * 1024) {
-      return alert("Max file size: 500KB");
-    }
-
+    if (file.size > 500 * 1024) return alert("Max file size: 500KB");
     const buffer = await file.arrayBuffer();
     payload = await encrypt(buffer, code);
     meta = { type: "file", name: file.name, mime: file.type };
   } else {
-    const buffer = new TextEncoder().encode(text);
-    payload = await encrypt(buffer, code);
+    payload = await encrypt(new TextEncoder().encode(text), code);
     meta = { type: "text" };
   }
 
-  try {
-    await retryFetch(`${API}/store`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code, payload, meta })
-    });
-  } catch {
-    return alert("Backend unavailable");
-  }
+  await retryFetch(`${API}/store`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code, payload, meta })
+  });
 
   $("code").innerText = `Code: ${code}`;
 
   QRCode.toCanvas(
     $("qr"),
-    `${location.origin}/?code=${code}`,
+    `https://secureclip-21.netlify.app/?code=${code}`,
     { width: 240 }
   );
 }
@@ -122,14 +115,12 @@ async function handlePayload(decrypted, meta) {
   if (meta.type === "file") {
     const blob = new Blob([decrypted], { type: meta.mime });
     const url = URL.createObjectURL(blob);
-
     const a = document.createElement("a");
     a.href = url;
     a.download = meta.name || "secureclip-file";
     document.body.appendChild(a);
     a.click();
     a.remove();
-
     URL.revokeObjectURL(url);
   } else {
     const text = new TextDecoder().decode(decrypted);
@@ -158,6 +149,9 @@ function startScan() {
       scanner = null;
 
       try {
+        if (alreadyFetched) return;
+        alreadyFetched = true;
+
         const url = new URL(decodedText);
         const code = url.searchParams.get("code");
         if (!code) throw "Invalid QR";
@@ -178,6 +172,9 @@ function startScan() {
 (async () => {
   const code = new URLSearchParams(location.search).get("code");
   if (!code) return;
+
+  if (alreadyFetched) return;
+  alreadyFetched = true;
 
   try {
     const res = await retryFetch(`${API}/fetch/${code}`);
