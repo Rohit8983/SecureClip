@@ -9,7 +9,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-/* only protect store */
+/* protect only store + health */
 app.use("/store", limiter);
 app.use("/health", limiter);
 
@@ -18,36 +18,60 @@ app.get("/health", async (_, res) => {
   try {
     await redis.ping();
     res.send("OK");
-  } catch {
+  } catch (err) {
+    console.error("HEALTH ERROR:", err);
     res.status(503).send("Redis unavailable");
   }
 });
 
 /* store */
 app.post("/store", async (req, res) => {
-  const { code, payload, meta } = req.body;
-  if (!code || !payload) {
-    return res.status(400).json({ error: "Invalid request" });
+  try {
+    const { code, payload, meta } = req.body;
+
+    if (!code || !payload || !meta) {
+      return res.status(400).json({ error: "Invalid request" });
+    }
+
+    await redis.set(
+      code,
+      JSON.stringify({ payload, meta }),
+      { ex: 300 } // 5 minutes for testing
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("STORE ERROR:", err);
+    res.status(500).json({ error: "Server error" });
   }
-
-  await redis.set(
-    code,
-    JSON.stringify({ payload, meta }),
-    { ex: 120 } // 2 minutes
-  );
-
-  res.json({ success: true });
 });
 
 /* fetch (NO RATE LIMIT) */
 app.get("/fetch/:code", async (req, res) => {
-  const data = await redis.get(req.params.code);
-  if (!data) {
-    return res.status(404).json({ error: "Expired or invalid" });
-  }
+  try {
+    const raw = await redis.get(req.params.code);
 
-  await redis.del(req.params.code);
-  res.json(JSON.parse(data));
+    if (!raw) {
+      return res.status(404).json({ error: "Expired or invalid" });
+    }
+
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (e) {
+      console.error("REDIS PARSE ERROR:", raw);
+      await redis.del(req.params.code);
+      return res.status(500).json({ error: "Corrupted payload" });
+    }
+
+    // one-time access
+    await redis.del(req.params.code);
+    res.json(parsed);
+
+  } catch (err) {
+    console.error("FETCH ERROR:", err);
+    res.status(500).json({ error: "Server error" });
+  }
 });
 
 const PORT = process.env.PORT || 3000;

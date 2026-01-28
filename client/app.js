@@ -92,7 +92,6 @@ async function send() {
   }
 
   $("code").innerText = `Code: ${code}`;
-
   QRCode.toCanvas(
     $("qr"),
     `${location.origin}/?code=${code}`,
@@ -126,7 +125,6 @@ function startScan() {
 /* ================= READ CODE FROM URL ================= */
 document.addEventListener("DOMContentLoaded", () => {
   const codeFromUrl = new URLSearchParams(location.search).get("code");
-
   if (codeFromUrl) {
     scannedCode = codeFromUrl;
     showActionButton();
@@ -137,19 +135,22 @@ document.addEventListener("DOMContentLoaded", () => {
 function showActionButton() {
   const btn = $("actionBtn");
   btn.style.display = "block";
+  btn.disabled = false;
   btn.innerText = "Tap to Copy / Download";
 }
 
 $("actionBtn").onclick = async () => {
   if (!scannedCode) return;
 
-  $("actionBtn").innerText = "Processing…";
+  const btn = $("actionBtn");
+  btn.disabled = true;
+  btn.innerText = "Processing…";
 
   const res = await fetch(`${API}/fetch/${scannedCode}`);
 
   if (!res.ok) {
-    alert(`❌ Code expired or invalid (HTTP ${res.status})`);
-    reset();
+    btn.innerText = "Expired or invalid ❌";
+    setTimeout(reset, 2000);
     return;
   }
 
@@ -157,22 +158,32 @@ $("actionBtn").onclick = async () => {
   const decrypted = await decrypt(payload, scannedCode);
 
   if (meta.type === "file") {
+    btn.innerText = "Downloading…";
+
     const blob = new Blob([decrypted], { type: meta.mime });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = meta.name;
     a.click();
+
+    btn.innerText = "Downloaded ✓";
   } else {
+    btn.innerText = "Copying…";
+
     const text = new TextDecoder().decode(decrypted);
     await navigator.clipboard.writeText(text);
-    alert("✅ Text copied");
+
+    btn.innerText = "Copied ✓";
   }
 
-  reset();
+  setTimeout(reset, 2000);
 };
 
 /* ================= RESET ================= */
 function reset() {
-  $("actionBtn").style.display = "none";
+  const btn = $("actionBtn");
+  btn.style.display = "none";
+  btn.innerText = "Tap to Copy / Download";
+  btn.disabled = false;
   scannedCode = null;
 }
