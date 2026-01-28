@@ -1,7 +1,10 @@
+/* ================= CONFIG ================= */
 const API = "https://secureclip.onrender.com";
 
+/* ================= STATE ================= */
 let scannedCode = null;
 
+/* ================= HELPERS ================= */
 const $ = (id) => document.getElementById(id);
 
 /* ================= CRYPTO ================= */
@@ -32,6 +35,7 @@ async function deriveKey(password) {
 async function encrypt(buffer, password) {
   const key = await deriveKey(password);
   const iv = crypto.getRandomValues(new Uint8Array(12));
+
   const encrypted = await crypto.subtle.encrypt(
     { name: "AES-GCM", iv },
     key,
@@ -60,7 +64,10 @@ async function send() {
   const text = $("text").value.trim();
   const file = $("file").files[0];
 
-  if (!text && !file) return alert("Add text or file");
+  if (!text && !file) {
+    alert("Add text or file");
+    return;
+  }
 
   const code = Math.floor(100000 + Math.random() * 900000).toString();
   let payload, meta;
@@ -73,21 +80,27 @@ async function send() {
     meta = { type: "text" };
   }
 
-  await fetch(`${API}/store`, {
+  const res = await fetch(`${API}/store`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ code, payload, meta })
   });
 
+  if (!res.ok) {
+    alert("Failed to store data");
+    return;
+  }
+
   $("code").innerText = `Code: ${code}`;
+
   QRCode.toCanvas(
     $("qr"),
-    `https://secureclip-21.netlify.app/?code=${code}`,
+    `${location.origin}/?code=${code}`,
     { width: 240 }
   );
 }
 
-/* ================= QR SCAN ================= */
+/* ================= QR SCAN (IN-APP CAMERA) ================= */
 function startScan() {
   const scanner = new Html5Qrcode("reader");
 
@@ -105,42 +118,61 @@ function startScan() {
         return;
       }
 
-      const btn = $("actionBtn");
-      btn.style.display = "block";
-      btn.innerText = "Tap to Copy / Download";
+      showActionButton();
     }
   );
 }
 
-/* ================= USER ACTION ================= */
+/* ================= READ CODE FROM URL ================= */
 document.addEventListener("DOMContentLoaded", () => {
-  $("actionBtn").onclick = async () => {
-    if (!scannedCode) return;
+  const codeFromUrl = new URLSearchParams(location.search).get("code");
 
-    $("actionBtn").innerText = "Processing…";
-
-    try {
-      const res = await fetch(`${API}/fetch/${scannedCode}`);
-      const { payload, meta } = await res.json();
-
-      const decrypted = await decrypt(payload, scannedCode);
-
-      if (meta.type === "file") {
-        const blob = new Blob([decrypted], { type: meta.mime });
-        const a = document.createElement("a");
-        a.href = URL.createObjectURL(blob);
-        a.download = meta.name;
-        a.click();
-      } else {
-        const text = new TextDecoder().decode(decrypted);
-        await navigator.clipboard.writeText(text);
-        alert("✅ Text copied");
-      }
-    } catch {
-      alert("❌ Code expired or invalid");
-    }
-
-    $("actionBtn").style.display = "none";
-    scannedCode = null;
-  };
+  if (codeFromUrl) {
+    scannedCode = codeFromUrl;
+    showActionButton();
+  }
 });
+
+/* ================= USER ACTION ================= */
+function showActionButton() {
+  const btn = $("actionBtn");
+  btn.style.display = "block";
+  btn.innerText = "Tap to Copy / Download";
+}
+
+$("actionBtn").onclick = async () => {
+  if (!scannedCode) return;
+
+  $("actionBtn").innerText = "Processing…";
+
+  const res = await fetch(`${API}/fetch/${scannedCode}`);
+
+  if (!res.ok) {
+    alert(`❌ Code expired or invalid (HTTP ${res.status})`);
+    reset();
+    return;
+  }
+
+  const { payload, meta } = await res.json();
+  const decrypted = await decrypt(payload, scannedCode);
+
+  if (meta.type === "file") {
+    const blob = new Blob([decrypted], { type: meta.mime });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = meta.name;
+    a.click();
+  } else {
+    const text = new TextDecoder().decode(decrypted);
+    await navigator.clipboard.writeText(text);
+    alert("✅ Text copied");
+  }
+
+  reset();
+};
+
+/* ================= RESET ================= */
+function reset() {
+  $("actionBtn").style.display = "none";
+  scannedCode = null;
+}

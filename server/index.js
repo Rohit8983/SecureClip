@@ -6,13 +6,14 @@ const limiter = require("./ratelimit");
 
 const app = express();
 
-/* ================= MIDDLEWARE ================= */
 app.use(cors());
-app.use(express.json({ limit: "1mb" })); // protect against large uploads
-app.use(limiter);
+app.use(express.json());
 
-/* ================= HEALTH CHECK ================= */
-// 🔥 Keeps Render awake
+/* only protect store */
+app.use("/store", limiter);
+app.use("/health", limiter);
+
+/* health */
 app.get("/health", async (_, res) => {
   try {
     await redis.ping();
@@ -22,58 +23,34 @@ app.get("/health", async (_, res) => {
   }
 });
 
-/* ================= STORE ================= */
+/* store */
 app.post("/store", async (req, res) => {
-  try {
-    const { code, payload, meta } = req.body;
-
-    if (!code || !payload || !meta) {
-      return res.status(400).json({ error: "Invalid request" });
-    }
-
-    // Optional hard limit (defense-in-depth)
-    if (payload.length > 800000) {
-      return res.status(413).json({ error: "Payload too large" });
-    }
-
-    // ⏱ TTL (seconds)
-    await redis.set(
-      code,
-      JSON.stringify({ payload, meta }),
-      { ex: 90 }
-    );
-
-    res.json({ success: true });
-
-  } catch (err) {
-    console.error("STORE ERROR:", err);
-    res.status(500).json({ error: "Server error" });
+  const { code, payload, meta } = req.body;
+  if (!code || !payload) {
+    return res.status(400).json({ error: "Invalid request" });
   }
+
+  await redis.set(
+    code,
+    JSON.stringify({ payload, meta }),
+    { ex: 120 } // 2 minutes
+  );
+
+  res.json({ success: true });
 });
 
-/* ================= FETCH ================= */
+/* fetch (NO RATE LIMIT) */
 app.get("/fetch/:code", async (req, res) => {
-  try {
-    const code = req.params.code;
-
-    const raw = await redis.get(code);
-    if (!raw) {
-      return res.status(404).json({ error: "Expired or invalid" });
-    }
-
-    // 🔐 One-time access
-    await redis.del(code);
-
-    res.json(JSON.parse(raw));
-
-  } catch (err) {
-    console.error("FETCH ERROR:", err);
-    res.status(500).json({ error: "Server error" });
+  const data = await redis.get(req.params.code);
+  if (!data) {
+    return res.status(404).json({ error: "Expired or invalid" });
   }
+
+  await redis.del(req.params.code);
+  res.json(JSON.parse(data));
 });
 
-/* ================= START ================= */
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`API running on ${PORT}`);
+  console.log(`SecureClip API running on ${PORT}`);
 });
