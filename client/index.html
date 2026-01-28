@@ -31,7 +31,6 @@
         aria-label="Secure text input"
       ></textarea>
 
-      <!-- ✅ FILE UPLOAD ADDED -->
       <label for="file"><strong>File (optional)</strong></label>
       <input type="file" id="file" />
 
@@ -62,8 +61,16 @@
 
       <div id="reader"></div>
 
+      <!-- ✅ REQUIRED USER ACTION BUTTON -->
+      <button
+        id="actionBtn"
+        style="display:none; margin-top:12px;"
+      >
+        Tap to Copy / Download
+      </button>
+
       <p class="hint">
-        Scanning will automatically copy text or download the file.
+        After scanning, tap the button to copy text or download the file.
       </p>
     </section>
 

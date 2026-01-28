@@ -1,27 +1,13 @@
 /* ================= CONFIG ================= */
 const API = "https://secureclip.onrender.com";
 
-/* ================= GLOBAL GUARD ================= */
+/* ================= GLOBAL ================= */
 let alreadyFetched = false;
+let pendingPayload = null;
+let pendingMeta = null;
 
 /* ================= HELPERS ================= */
 const $ = (id) => document.getElementById(id);
-const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-
-/* ================= WAKE BACKEND ================= */
-fetch(`${API}/health`).catch(() => {});
-
-/* ================= RETRY FETCH ================= */
-async function retryFetch(url, options = {}, retries = 3) {
-  for (let i = 0; i < retries; i++) {
-    try {
-      const res = await fetch(url, options);
-      if (res.ok) return res;
-    } catch {}
-    await sleep(3000);
-  }
-  throw new Error("Backend unavailable");
-}
 
 /* ================= CRYPTO ================= */
 async function deriveKey(password) {
@@ -75,34 +61,36 @@ async function decrypt(payload, password) {
   );
 }
 
-/* ================= SEND + QR ================= */
+/* ================= SEND ================= */
 async function send() {
   const text = $("text").value.trim();
-  const file = $("file")?.files?.[0];
+  const file = $("file").files[0];
 
-  if (!text && !file) return alert("Paste text or upload a file");
+  if (!text && !file) {
+    return alert("Enter text or upload a file");
+  }
 
   const code = Math.floor(100000 + Math.random() * 900000).toString();
   let payload, meta;
 
   if (file) {
-    if (file.size > 500 * 1024) return alert("Max file size: 500KB");
-    const buffer = await file.arrayBuffer();
-    payload = await encrypt(buffer, code);
+    if (file.size > 500 * 1024) {
+      return alert("Max file size is 500KB");
+    }
+    payload = await encrypt(await file.arrayBuffer(), code);
     meta = { type: "file", name: file.name, mime: file.type };
   } else {
     payload = await encrypt(new TextEncoder().encode(text), code);
     meta = { type: "text" };
   }
 
-  await retryFetch(`${API}/store`, {
+  await fetch(`${API}/store`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ code, payload, meta })
   });
 
   $("code").innerText = `Code: ${code}`;
-
   QRCode.toCanvas(
     $("qr"),
     `https://secureclip-21.netlify.app/?code=${code}`,
@@ -110,27 +98,34 @@ async function send() {
   );
 }
 
-/* ================= HANDLE PAYLOAD ================= */
-async function handlePayload(decrypted, meta) {
-  if (meta.type === "file") {
-    const blob = new Blob([decrypted], { type: meta.mime });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = meta.name || "secureclip-file";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  } else {
-    const text = new TextDecoder().decode(decrypted);
-    try {
+/* ================= HANDLE PAYLOAD (SAFE) ================= */
+function prepareAction(decrypted, meta) {
+  pendingPayload = decrypted;
+  pendingMeta = meta;
+
+  const btn = $("actionBtn");
+  btn.style.display = "block";
+
+  btn.onclick = async () => {
+    btn.style.display = "none";
+
+    if (pendingMeta.type === "file") {
+      const blob = new Blob([pendingPayload], { type: pendingMeta.mime });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = pendingMeta.name;
+      a.click();
+      URL.revokeObjectURL(url);
+    } else {
+      const text = new TextDecoder().decode(pendingPayload);
       await navigator.clipboard.writeText(text);
-      alert("✅ Text copied to clipboard");
-    } catch {
-      prompt("SecureClip Text:", text);
+      alert("✅ Text copied");
     }
-  }
+
+    pendingPayload = null;
+    pendingMeta = null;
+  };
 }
 
 /* ================= QR SCAN ================= */
@@ -140,7 +135,6 @@ function startScan() {
   if (scanner) return;
 
   scanner = new Html5Qrcode("reader");
-
   scanner.start(
     { facingMode: "environment" },
     { fps: 10, qrbox: 250 },
@@ -148,22 +142,18 @@ function startScan() {
       await scanner.stop();
       scanner = null;
 
-      try {
-        if (alreadyFetched) return;
-        alreadyFetched = true;
+      if (alreadyFetched) return;
+      alreadyFetched = true;
 
-        const url = new URL(decodedText);
-        const code = url.searchParams.get("code");
-        if (!code) throw "Invalid QR";
+      const url = new URL(decodedText);
+      const code = url.searchParams.get("code");
+      if (!code) return alert("Invalid QR");
 
-        const res = await retryFetch(`${API}/fetch/${code}`);
-        const { payload, meta } = await res.json();
+      const res = await fetch(`${API}/fetch/${code}`);
+      const { payload, meta } = await res.json();
 
-        const decrypted = await decrypt(payload, code);
-        await handlePayload(decrypted, meta);
-      } catch {
-        alert("❌ Code expired or invalid");
-      }
+      const decrypted = await decrypt(payload, code);
+      prepareAction(decrypted, meta);
     }
   );
 }
@@ -171,18 +161,13 @@ function startScan() {
 /* ================= AUTO FETCH ================= */
 (async () => {
   const code = new URLSearchParams(location.search).get("code");
-  if (!code) return;
+  if (!code || alreadyFetched) return;
 
-  if (alreadyFetched) return;
   alreadyFetched = true;
 
-  try {
-    const res = await retryFetch(`${API}/fetch/${code}`);
-    const { payload, meta } = await res.json();
+  const res = await fetch(`${API}/fetch/${code}`);
+  const { payload, meta } = await res.json();
 
-    const decrypted = await decrypt(payload, code);
-    await handlePayload(decrypted, meta);
-  } catch {
-    alert("❌ Code expired or invalid");
-  }
+  const decrypted = await decrypt(payload, code);
+  prepareAction(decrypted, meta);
 })();
