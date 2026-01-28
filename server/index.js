@@ -8,7 +8,7 @@ const app = express();
 
 /* ================= MIDDLEWARE ================= */
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "1mb" })); // protect against large uploads
 app.use(limiter);
 
 /* ================= HEALTH CHECK ================= */
@@ -25,14 +25,23 @@ app.get("/health", async (_, res) => {
 /* ================= STORE ================= */
 app.post("/store", async (req, res) => {
   try {
-    const { code, payload } = req.body;
+    const { code, payload, meta } = req.body;
 
-    if (!code || !payload) {
+    if (!code || !payload || !meta) {
       return res.status(400).json({ error: "Invalid request" });
     }
 
-    // ⏱ Increased TTL (more reliable)
-    await redis.set(code, payload, { ex: 90 });
+    // Optional hard limit (defense-in-depth)
+    if (payload.length > 800000) {
+      return res.status(413).json({ error: "Payload too large" });
+    }
+
+    // ⏱ TTL (seconds)
+    await redis.set(
+      code,
+      JSON.stringify({ payload, meta }),
+      { ex: 90 }
+    );
 
     res.json({ success: true });
 
@@ -47,15 +56,15 @@ app.get("/fetch/:code", async (req, res) => {
   try {
     const code = req.params.code;
 
-    const payload = await redis.get(code);
-    if (!payload) {
+    const raw = await redis.get(code);
+    if (!raw) {
       return res.status(404).json({ error: "Expired or invalid" });
     }
 
     // 🔐 One-time access
     await redis.del(code);
 
-    res.json({ payload });
+    res.json(JSON.parse(raw));
 
   } catch (err) {
     console.error("FETCH ERROR:", err);

@@ -6,7 +6,6 @@ const $ = (id) => document.getElementById(id);
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 /* ================= WAKE BACKEND ================= */
-// 🔥 Prevent Render cold-start failures
 fetch(`${API}/health`).catch(() => {});
 
 /* ================= RETRY FETCH ================= */
@@ -16,15 +15,14 @@ async function retryFetch(url, options = {}, retries = 3) {
       const res = await fetch(url, options);
       if (res.ok) return res;
     } catch {}
-    await sleep(3000); // wait before retry
+    await sleep(3000);
   }
   throw new Error("Backend unavailable");
 }
 
 /* ================= CRYPTO ================= */
-async function encrypt(text, password) {
+async function deriveKey(password) {
   const enc = new TextEncoder();
-
   const keyMaterial = await crypto.subtle.importKey(
     "raw",
     enc.encode(password),
@@ -33,7 +31,7 @@ async function encrypt(text, password) {
     ["deriveKey"]
   );
 
-  const key = await crypto.subtle.deriveKey(
+  return crypto.subtle.deriveKey(
     {
       name: "PBKDF2",
       salt: enc.encode("secureclip"),
@@ -43,14 +41,18 @@ async function encrypt(text, password) {
     keyMaterial,
     { name: "AES-GCM", length: 256 },
     false,
-    ["encrypt"]
+    ["encrypt", "decrypt"]
   );
+}
 
+async function encrypt(buffer, password) {
+  const key = await deriveKey(password);
   const iv = crypto.getRandomValues(new Uint8Array(12));
+
   const encrypted = await crypto.subtle.encrypt(
     { name: "AES-GCM", iv },
     key,
-    enc.encode(text)
+    buffer
   );
 
   return btoa(JSON.stringify({
@@ -60,70 +62,84 @@ async function encrypt(text, password) {
 }
 
 async function decrypt(payload, password) {
-  const enc = new TextEncoder();
-  const dec = new TextDecoder();
   const parsed = JSON.parse(atob(payload));
+  const key = await deriveKey(password);
 
-  const keyMaterial = await crypto.subtle.importKey(
-    "raw",
-    enc.encode(password),
-    "PBKDF2",
-    false,
-    ["deriveKey"]
-  );
-
-  const key = await crypto.subtle.deriveKey(
-    {
-      name: "PBKDF2",
-      salt: enc.encode("secureclip"),
-      iterations: 100000,
-      hash: "SHA-256"
-    },
-    keyMaterial,
-    { name: "AES-GCM", length: 256 },
-    false,
-    ["decrypt"]
-  );
-
-  const decrypted = await crypto.subtle.decrypt(
+  return crypto.subtle.decrypt(
     { name: "AES-GCM", iv: new Uint8Array(parsed.iv) },
     key,
     new Uint8Array(parsed.data)
   );
-
-  return dec.decode(decrypted);
 }
 
 /* ================= SEND + QR ================= */
 async function send() {
   const text = $("text").value.trim();
-  if (!text) return alert("Paste something first!");
+  const file = $("file")?.files?.[0];
+
+  if (!text && !file) {
+    return alert("Paste text or upload a file");
+  }
 
   const code = Math.floor(100000 + Math.random() * 900000).toString();
-  const payload = await encrypt(text, code);
+  let payload, meta;
 
-  let stored = false;
+  if (file) {
+    if (file.size > 500 * 1024) {
+      return alert("Max file size: 500KB");
+    }
+
+    const buffer = await file.arrayBuffer();
+    payload = await encrypt(buffer, code);
+    meta = { type: "file", name: file.name, mime: file.type };
+  } else {
+    const buffer = new TextEncoder().encode(text);
+    payload = await encrypt(buffer, code);
+    meta = { type: "text" };
+  }
 
   try {
     await retryFetch(`${API}/store`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code, payload })
+      body: JSON.stringify({ code, payload, meta })
     });
-    stored = true;
   } catch {
-    console.warn("Backend sleeping, QR still generated");
+    return alert("Backend unavailable");
   }
 
-  $("code").innerText = stored
-    ? `Code: ${code}`
-    : `⚠ Backend waking up… retry in a few seconds`;
+  $("code").innerText = `Code: ${code}`;
 
   QRCode.toCanvas(
     $("qr"),
     `${location.origin}/?code=${code}`,
     { width: 240 }
   );
+}
+
+/* ================= HANDLE PAYLOAD ================= */
+async function handlePayload(decrypted, meta) {
+  if (meta.type === "file") {
+    const blob = new Blob([decrypted], { type: meta.mime });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = meta.name || "secureclip-file";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    URL.revokeObjectURL(url);
+  } else {
+    const text = new TextDecoder().decode(decrypted);
+    try {
+      await navigator.clipboard.writeText(text);
+      alert("✅ Text copied to clipboard");
+    } catch {
+      prompt("SecureClip Text:", text);
+    }
+  }
 }
 
 /* ================= QR SCAN ================= */
@@ -147,14 +163,12 @@ function startScan() {
         if (!code) throw "Invalid QR";
 
         const res = await retryFetch(`${API}/fetch/${code}`);
-        const { payload } = await res.json();
+        const { payload, meta } = await res.json();
 
-        const text = await decrypt(payload, code);
-        await navigator.clipboard.writeText(text);
-
-        alert("✅ SecureClip copied to clipboard");
+        const decrypted = await decrypt(payload, code);
+        await handlePayload(decrypted, meta);
       } catch {
-        alert("❌ Code expired or backend unavailable");
+        alert("❌ Code expired or invalid");
       }
     }
   );
@@ -167,13 +181,11 @@ function startScan() {
 
   try {
     const res = await retryFetch(`${API}/fetch/${code}`);
-    const { payload } = await res.json();
+    const { payload, meta } = await res.json();
 
-    const text = await decrypt(payload, code);
-    await navigator.clipboard.writeText(text);
-
-    alert("✅ SecureClip copied to clipboard");
+    const decrypted = await decrypt(payload, code);
+    await handlePayload(decrypted, meta);
   } catch {
-    alert("❌ Code expired or backend unavailable");
+    alert("❌ Code expired or invalid");
   }
 })();

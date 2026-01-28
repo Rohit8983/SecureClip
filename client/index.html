@@ -16,7 +16,7 @@
     <header class="header">
       <h1>SecureClip</h1>
       <p class="subtitle">
-        Securely transfer links & text from your phone to your laptop
+        Securely transfer text or files between devices
         <br />
         <span>End-to-End Encrypted · Auto-Expires · One-Time Access</span>
       </p>
@@ -24,17 +24,21 @@
 
     <!-- INPUT -->
     <section class="card">
-      <label for="text"><strong>Text or Link</strong></label>
+      <label for="text"><strong>Text (optional)</strong></label>
       <textarea
         id="text"
-        placeholder="Paste a URL, token, or sensitive text here…"
+        placeholder="Paste text here… (or upload a file below)"
         aria-label="Secure text input"
       ></textarea>
+
+      <!-- ✅ FILE UPLOAD ADDED -->
+      <label for="file"><strong>File (optional)</strong></label>
+      <input type="file" id="file" />
 
       <button onclick="send()">Generate Secure QR</button>
 
       <p class="hint">
-        Data is encrypted locally in your browser and never stored in plain text.
+        Text and files are encrypted locally in your browser and never stored in plain text.
       </p>
     </section>
 
@@ -56,11 +60,10 @@
       <h3>📷 Scan SecureClip QR</h3>
       <button onclick="startScan()">Start Camera Scan</button>
 
-      <!-- MUST exist for scanner -->
       <div id="reader"></div>
 
       <p class="hint">
-        Scan a SecureClip QR to instantly copy content to your clipboard.
+        Scanning will automatically copy text or download the file.
       </p>
     </section>
 
@@ -73,7 +76,7 @@
 
   </main>
 
-  <!-- IMPORTANT: script order matters -->
+  <!-- Scripts -->
   <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
   <script src="https://unpkg.com/html5-qrcode"></script>
   <script src="app.js"></script>
