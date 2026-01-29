@@ -2,29 +2,93 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>SecureClip</title>
+  <title>SecureClip · Secure Link Transfer</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <link rel="manifest" href="manifest.json" />
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
 
-<h2>SecureClip</h2>
+<main class="container">
 
-<textarea id="text" placeholder="Text (optional)"></textarea>
-<input type="file" id="file" />
-<button onclick="send()">Generate QR</button>
+  <!-- Header -->
+  <header class="header">
+    <h1>SecureClip</h1>
+    <p class="subtitle">
+      Securely transfer text or files between devices
+      <br />
+      <span>End-to-End Encrypted · Auto-Expires · One-Time Access</span>
+    </p>
+  </header>
 
-<h3 id="code"></h3>
-<canvas id="qr"></canvas>
+  <!-- INPUT -->
+  <section class="card">
+    <label for="text"><strong>Text (optional)</strong></label>
+    <textarea
+      id="text"
+      placeholder="Paste text here… (or upload a file below)"
+      aria-label="Secure text input"
+    ></textarea>
 
-<hr />
+    <label for="file"><strong>File (optional)</strong></label>
+    <input type="file" id="file" />
 
-<button onclick="startScan()">Scan QR</button>
-<div id="reader"></div>
+    <button onclick="send()">Generate Secure QR</button>
 
-<button id="actionBtn" style="display:none"></button>
+    <p class="hint">
+      Text and files are encrypted locally in your browser and never stored in plain text.
+    </p>
+  </section>
 
+  <!-- RESULT -->
+  <section class="card result">
+    <h3 id="code" aria-live="polite"></h3>
+
+    <div class="qr-box">
+      <canvas id="qr"></canvas>
+    </div>
+
+    <p class="expiry">
+      ⏱ Expires in <strong>30 seconds</strong> · One-time use only
+    </p>
+  </section>
+
+  <!-- SCAN -->
+  <section class="card scan">
+    <h3>📷 Scan SecureClip QR</h3>
+    <button onclick="startScan()">Start Camera Scan</button>
+
+    <div id="reader"></div>
+
+    <!-- Action button -->
+    <button
+      id="actionBtn"
+      disabled
+      style="display:none; margin-top:12px;"
+      aria-live="polite"
+    >
+      Processing…
+    </button>
+
+    <p class="hint">
+      After scanning, tap the button to copy text or download the file.
+    </p>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <p>
+      Built with ❤️ for security-first workflows · SecureClip © 2026
+    </p>
+  </footer>
+
+</main>
+
+<!-- Scripts -->
 <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
 <script src="https://unpkg.com/html5-qrcode"></script>
 <script src="app.js"></script>
+
 </body>
 </html>
