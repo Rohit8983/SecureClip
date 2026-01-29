@@ -1,14 +1,30 @@
-const API = "https://secureclip.onrender.com"; // change if needed
-const $ = (id) => document.getElementById(id);
+/* ================= CONFIG ================= */
+const API = "https://secureclip.onrender.com";
 
-/* ================= MODE ================= */
-const params = new URLSearchParams(location.search);
-const MODE = params.get("mode");
-const CODE = params.get("code");
+/* ================= HELPERS ================= */
+const $ = (id) => document.getElementById(id);
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+/* ================= WAKE BACKEND ================= */
+// 🔥 Prevent Render cold-start failures
+fetch(`${API}/health`).catch(() => {});
+
+/* ================= RETRY FETCH ================= */
+async function retryFetch(url, options = {}, retries = 3) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const res = await fetch(url, options);
+      if (res.ok) return res;
+    } catch {}
+    await sleep(3000); // wait before retry
+  }
+  throw new Error("Backend unavailable");
+}
 
 /* ================= CRYPTO ================= */
-async function deriveKey(password) {
+async function encrypt(text, password) {
   const enc = new TextEncoder();
+
   const keyMaterial = await crypto.subtle.importKey(
     "raw",
     enc.encode(password),
@@ -17,7 +33,7 @@ async function deriveKey(password) {
     ["deriveKey"]
   );
 
-  return crypto.subtle.deriveKey(
+  const key = await crypto.subtle.deriveKey(
     {
       name: "PBKDF2",
       salt: enc.encode("secureclip"),
@@ -27,122 +43,137 @@ async function deriveKey(password) {
     keyMaterial,
     { name: "AES-GCM", length: 256 },
     false,
-    ["encrypt", "decrypt"]
+    ["encrypt"]
   );
-}
 
-async function encrypt(buffer, password) {
-  const key = await deriveKey(password);
   const iv = crypto.getRandomValues(new Uint8Array(12));
-
   const encrypted = await crypto.subtle.encrypt(
     { name: "AES-GCM", iv },
     key,
-    buffer
+    enc.encode(text)
   );
 
   return btoa(JSON.stringify({
-    iv: [...iv],
-    data: [...new Uint8Array(encrypted)]
+    iv: Array.from(iv),
+    data: Array.from(new Uint8Array(encrypted))
   }));
 }
 
 async function decrypt(payload, password) {
+  const enc = new TextEncoder();
+  const dec = new TextDecoder();
   const parsed = JSON.parse(atob(payload));
-  const key = await deriveKey(password);
 
-  return crypto.subtle.decrypt(
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(password),
+    "PBKDF2",
+    false,
+    ["deriveKey"]
+  );
+
+  const key = await crypto.subtle.deriveKey(
+    {
+      name: "PBKDF2",
+      salt: enc.encode("secureclip"),
+      iterations: 100000,
+      hash: "SHA-256"
+    },
+    keyMaterial,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["decrypt"]
+  );
+
+  const decrypted = await crypto.subtle.decrypt(
     { name: "AES-GCM", iv: new Uint8Array(parsed.iv) },
     key,
     new Uint8Array(parsed.data)
   );
+
+  return dec.decode(decrypted);
 }
 
-/* ================= SENDER ================= */
+/* ================= SEND + QR ================= */
 async function send() {
   const text = $("text").value.trim();
-  const file = $("file").files[0];
-
-  if (!text && !file) {
-    alert("Add text or file");
-    return;
-  }
+  if (!text) return alert("Paste something first!");
 
   const code = Math.floor(100000 + Math.random() * 900000).toString();
-  let payload, meta;
+  const payload = await encrypt(text, code);
 
-  if (file) {
-    payload = await encrypt(await file.arrayBuffer(), code);
-    meta = { type: "file", name: file.name, mime: file.type };
-  } else {
-    payload = await encrypt(new TextEncoder().encode(text), code);
-    meta = { type: "text" };
-  }
+  let stored = false;
 
-  await fetch(`${API}/store`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ code, payload, meta })
-  });
-
-  $("code").innerText = `Code: ${code}`;
-
-  const qrURL =
-    `${location.origin}${location.pathname}?mode=receive&code=${code}`;
-
-  QRCode.toCanvas($("qr"), qrURL, { width: 240 });
-}
-
-/* ================= RECEIVER ================= */
-if (MODE === "receive" && CODE) {
-  $("sender").style.display = "none";
-  $("receiver").style.display = "block";
-  $("status").innerText = "Checking availability…";
-
-  // SAFE CHECK (NO DELETE)
-  fetch(`${API}/peek/${CODE}`)
-    .then(res => {
-      if (!res.ok) throw new Error();
-      return res.json();
-    })
-    .then(() => {
-      $("status").innerText = "Ready to receive";
-    })
-    .catch(() => {
-      $("status").innerText = "❌ Expired or invalid";
-      $("actionBtn").disabled = true;
-    });
-
-  // USER CONFIRMED CONSUME
-  $("actionBtn").onclick = async () => {
-    $("actionBtn").disabled = true;
-    $("status").innerText = "Decrypting…";
-
-    const res = await fetch(`${API}/consume`, {
+  try {
+    await retryFetch(`${API}/store`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code: CODE })
+      body: JSON.stringify({ code, payload })
     });
+    stored = true;
+  } catch {
+    console.warn("Backend sleeping, QR still generated");
+  }
 
-    if (!res.ok) {
-      $("status").innerText = "❌ Expired or already used";
-      return;
-    }
+  $("code").innerText = stored
+    ? `Code: ${code}`
+    : `⚠ Backend waking up… retry in a few seconds`;
 
-    const { payload, meta } = await res.json();
-    const decrypted = await decrypt(payload, CODE);
-
-    if (meta.type === "file") {
-      const blob = new Blob([decrypted], { type: meta.mime });
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = meta.name;
-      a.click();
-      $("status").innerText = "✅ File downloaded";
-    } else {
-      const text = new TextDecoder().decode(decrypted);
-      await navigator.clipboard.writeText(text);
-      $("status").innerText = "✅ Text copied";
-    }
-  };
+  QRCode.toCanvas(
+    $("qr"),
+    `${location.origin}/?code=${code}`,
+    { width: 240 }
+  );
 }
+
+/* ================= QR SCAN ================= */
+let scanner = null;
+
+function startScan() {
+  if (scanner) return;
+
+  scanner = new Html5Qrcode("reader");
+
+  scanner.start(
+    { facingMode: "environment" },
+    { fps: 10, qrbox: 250 },
+    async (decodedText) => {
+      await scanner.stop();
+      scanner = null;
+
+      try {
+        const url = new URL(decodedText);
+        const code = url.searchParams.get("code");
+        if (!code) throw "Invalid QR";
+
+        const res = await retryFetch(`${API}/fetch/${code}`);
+        const { payload } = await res.json();
+
+        const text = await decrypt(payload, code);
+        await navigator.clipboard.writeText(text);
+
+        alert("✅ SecureClip copied to clipboard");
+      } catch {
+        alert("❌ Code expired or backend unavailable");
+      }
+    }
+  );
+}
+
+/* ================= AUTO FETCH ================= */
+(async () => {
+  const code = new URLSearchParams(location.search).get("code");
+  if (!code) return;
+
+  try {
+    const res = await retryFetch(`${API}/fetch/${code}`);
+    const { payload } = await res.json();
+
+    const text = await decrypt(payload, code);
+    await navigator.clipboard.writeText(text);
+
+    alert("✅ SecureClip copied to clipboard");
+  } catch {
+    alert("❌ Code expired or backend unavailable");
+  }
+})();

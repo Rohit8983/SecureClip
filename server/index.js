@@ -8,76 +8,57 @@ const app = express();
 
 /* ================= MIDDLEWARE ================= */
 app.use(cors());
-app.use(express.json({ limit: "1mb" }));
+app.use(express.json());
 app.use(limiter);
 
-/* ================= HEALTH ================= */
-app.get("/health", (_, res) => {
-  res.json({ ok: true });
+/* ================= HEALTH CHECK ================= */
+// 🔥 Keeps Render awake
+app.get("/health", async (_, res) => {
+  try {
+    await redis.ping();
+    res.send("OK");
+  } catch {
+    res.status(503).send("Redis unavailable");
+  }
 });
 
 /* ================= STORE ================= */
 app.post("/store", async (req, res) => {
   try {
-    const { code, payload, meta } = req.body;
+    const { code, payload } = req.body;
 
-    if (!code || !payload || !meta) {
+    if (!code || !payload) {
       return res.status(400).json({ error: "Invalid request" });
     }
 
-    await redis.set(
-      code,
-      JSON.stringify({ payload, meta }),
-      { ex: 300 } // 5 minutes TTL
-    );
+    // ⏱ Increased TTL (more reliable)
+    await redis.set(code, payload, { ex: 90 });
 
     res.json({ success: true });
+
   } catch (err) {
     console.error("STORE ERROR:", err);
     res.status(500).json({ error: "Server error" });
   }
 });
 
-/* ================= SAFE CHECK (NO DELETE) ================= */
-app.get("/peek/:code", async (req, res) => {
+/* ================= FETCH ================= */
+app.get("/fetch/:code", async (req, res) => {
   try {
-    const raw = await redis.get(req.params.code);
+    const code = req.params.code;
 
-    if (!raw) {
+    const payload = await redis.get(code);
+    if (!payload) {
       return res.status(404).json({ error: "Expired or invalid" });
     }
 
-    const { meta } = JSON.parse(raw);
-    res.json({ ready: true, meta });
-  } catch (err) {
-    console.error("PEEK ERROR:", err);
-    res.status(500).json({ error: "Server error" });
-  }
-});
-
-/* ================= ONE-TIME CONSUME ================= */
-app.post("/consume", async (req, res) => {
-  try {
-    const { code } = req.body;
-
-    if (!code) {
-      return res.status(400).json({ error: "Missing code" });
-    }
-
-    const raw = await redis.get(code);
-
-    if (!raw) {
-      return res.status(404).json({ error: "Expired or already used" });
-    }
-
-    const parsed = JSON.parse(raw);
-
-    // 🔐 destroy immediately
+    // 🔐 One-time access
     await redis.del(code);
 
-    res.json(parsed);
+    res.json({ payload });
+
   } catch (err) {
-    console.error("CONSUME ERROR:", err);
+    console.error("FETCH ERROR:", err);
     res.status(500).json({ error: "Server error" });
   }
 });
