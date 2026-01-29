@@ -2,10 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>SecureClip · Secure Link Transfer</title>
+  <title>SecureClip</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
-  <link rel="manifest" href="manifest.json" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -13,43 +11,34 @@
 <main class="container">
 
   <header class="header">
-    <h1>SecureClip</h1>
-    <p class="subtitle">
-      Securely transfer text or files between devices<br />
-      <span>End-to-End Encrypted · One-Time Access</span>
-    </p>
+    <h1>🔐 SecureClip</h1>
+    <p>Secure text & file transfer (one-time)</p>
   </header>
 
-  <!-- INPUT -->
-  <section class="card">
-    <label><strong>Text (optional)</strong></label>
-    <textarea id="text" placeholder="Paste text here…"></textarea>
+  <!-- SENDER -->
+  <section id="sender" class="card">
+    <h3>Sender</h3>
 
-    <label><strong>File (optional)</strong></label>
+    <textarea id="text" placeholder="Paste text (optional)"></textarea>
     <input type="file" id="file" />
 
-    <button onclick="send()">Generate Secure QR</button>
-  </section>
+    <button onclick="send()">Generate QR</button>
 
-  <!-- RESULT -->
-  <section class="card">
-    <h3 id="code"></h3>
+    <h4 id="code"></h4>
     <canvas id="qr"></canvas>
   </section>
 
-  <!-- SCAN -->
-  <section class="card">
-    <h3>📷 Scan QR</h3>
-    <button onclick="startScan()">Start Scan</button>
-    <div id="reader"></div>
+  <!-- RECEIVER -->
+  <section id="receiver" class="card" style="display:none">
+    <h3>Receiver</h3>
 
-    <button id="actionBtn" style="display:none;margin-top:12px;"></button>
+    <button id="actionBtn">Download / Copy</button>
+    <p id="status"></p>
   </section>
 
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
-<script src="https://unpkg.com/html5-qrcode"></script>
 <script src="app.js"></script>
 </body>
 </html>

@@ -1,13 +1,16 @@
 /* ================= CONFIG ================= */
 const API = "https://secureclip.onrender.com";
-
-/* ================= STATE ================= */
-let scannedCode = null;
-let scanner = null;
-let scanned = false;
-
-/* ================= HELPERS ================= */
 const $ = (id) => document.getElementById(id);
+
+/* ================= MODE DETECTION ================= */
+const params = new URLSearchParams(location.search);
+const MODE = params.get("mode");
+const CODE = params.get("code");
+
+if (MODE === "receive" && CODE) {
+  $("sender").style.display = "none";
+  $("receiver").style.display = "block";
+}
 
 /* ================= CRYPTO ================= */
 async function deriveKey(password) {
@@ -37,6 +40,7 @@ async function deriveKey(password) {
 async function encrypt(buffer, password) {
   const key = await deriveKey(password);
   const iv = crypto.getRandomValues(new Uint8Array(12));
+
   const encrypted = await crypto.subtle.encrypt(
     { name: "AES-GCM", iv },
     key,
@@ -52,6 +56,7 @@ async function encrypt(buffer, password) {
 async function decrypt(payload, password) {
   const parsed = JSON.parse(atob(payload));
   const key = await deriveKey(password);
+
   return crypto.subtle.decrypt(
     { name: "AES-GCM", iv: new Uint8Array(parsed.iv) },
     key,
@@ -59,12 +64,15 @@ async function decrypt(payload, password) {
   );
 }
 
-/* ================= SEND ================= */
+/* ================= SENDER ================= */
 async function send() {
   const text = $("text").value.trim();
   const file = $("file").files[0];
 
-  if (!text && !file) return alert("Add text or file");
+  if (!text && !file) {
+    alert("Add text or file");
+    return;
+  }
 
   const code = Math.floor(100000 + Math.random() * 900000).toString();
   let payload, meta;
@@ -83,75 +91,45 @@ async function send() {
     body: JSON.stringify({ code, payload, meta })
   });
 
-  if (!res.ok) return alert("Backend unavailable");
-
-  $("code").innerText = `Code: ${code}`;
-  QRCode.toCanvas($("qr"), `${location.origin}?code=${code}`, { width: 240 });
-}
-
-/* ================= SCAN ================= */
-function startScan() {
-  if (scanner) return;
-
-  scanned = false;
-  scanner = new Html5Qrcode("reader");
-
-  scanner.start(
-    { facingMode: "environment" },
-    { fps: 10, qrbox: 250 },
-    async (decodedText) => {
-      if (scanned) return;
-      scanned = true;
-
-      await scanner.stop();
-      scanner = null;
-
-      const url = new URL(decodedText);
-      scannedCode = url.searchParams.get("code");
-      if (!scannedCode) return alert("Invalid QR");
-
-      showAction("Processing…");
-    }
-  );
-}
-
-/* ================= ACTION ================= */
-function showAction(text) {
-  const btn = $("actionBtn");
-  btn.style.display = "block";
-  btn.innerText = text;
-  btn.disabled = false;
-}
-
-$("actionBtn").onclick = async () => {
-  const btn = $("actionBtn");
-  btn.disabled = true;
-
-  const res = await fetch(`${API}/fetch/${scannedCode}`);
   if (!res.ok) {
-    btn.innerText = "Expired ❌";
+    alert("Backend error");
     return;
   }
 
-  const { payload, meta } = await res.json();
-  const decrypted = await decrypt(payload, scannedCode);
+  $("code").innerText = `Code: ${code}`;
 
-  if (meta.type === "file") {
-    btn.innerText = `Download ${meta.name}`;
-    const blob = new Blob([decrypted], { type: meta.mime });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = meta.name;
-    a.click();
-  } else {
-    btn.innerText = "Copy Text";
-    await navigator.clipboard.writeText(
-      new TextDecoder().decode(decrypted)
-    );
-  }
+  const qrURL =
+    `${location.origin}${location.pathname}?mode=receive&code=${code}`;
 
-  setTimeout(() => {
-    btn.style.display = "none";
-    scannedCode = null;
-  }, 3000);
-};
+  QRCode.toCanvas($("qr"), qrURL, { width: 240 });
+}
+
+/* ================= RECEIVER ================= */
+if (MODE === "receive" && CODE) {
+  $("actionBtn").onclick = async () => {
+    $("actionBtn").disabled = true;
+    $("status").innerText = "Fetching…";
+
+    const res = await fetch(`${API}/fetch/${CODE}`);
+    if (!res.ok) {
+      $("status").innerText = "❌ Expired or already used";
+      return;
+    }
+
+    const { payload, meta } = await res.json();
+    const decrypted = await decrypt(payload, CODE);
+
+    if (meta.type === "file") {
+      const blob = new Blob([decrypted], { type: meta.mime });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = meta.name;
+      a.click();
+      $("status").innerText = "✅ File downloaded";
+    } else {
+      const text = new TextDecoder().decode(decrypted);
+      await navigator.clipboard.writeText(text);
+      $("status").innerText = "✅ Text copied";
+    }
+  };
+}
