@@ -1,16 +1,10 @@
-/* ================= CONFIG ================= */
-const API = "https://secureclip.onrender.com";
+const API = "https://secureclip.onrender.com"; // change if needed
 const $ = (id) => document.getElementById(id);
 
-/* ================= MODE DETECTION ================= */
+/* ================= MODE ================= */
 const params = new URLSearchParams(location.search);
 const MODE = params.get("mode");
 const CODE = params.get("code");
-
-if (MODE === "receive" && CODE) {
-  $("sender").style.display = "none";
-  $("receiver").style.display = "block";
-}
 
 /* ================= CRYPTO ================= */
 async function deriveKey(password) {
@@ -85,16 +79,11 @@ async function send() {
     meta = { type: "text" };
   }
 
-  const res = await fetch(`${API}/store`, {
+  await fetch(`${API}/store`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ code, payload, meta })
   });
-
-  if (!res.ok) {
-    alert("Backend error");
-    return;
-  }
 
   $("code").innerText = `Code: ${code}`;
 
@@ -106,11 +95,35 @@ async function send() {
 
 /* ================= RECEIVER ================= */
 if (MODE === "receive" && CODE) {
+  $("sender").style.display = "none";
+  $("receiver").style.display = "block";
+  $("status").innerText = "Checking availability…";
+
+  // SAFE CHECK (NO DELETE)
+  fetch(`${API}/peek/${CODE}`)
+    .then(res => {
+      if (!res.ok) throw new Error();
+      return res.json();
+    })
+    .then(() => {
+      $("status").innerText = "Ready to receive";
+    })
+    .catch(() => {
+      $("status").innerText = "❌ Expired or invalid";
+      $("actionBtn").disabled = true;
+    });
+
+  // USER CONFIRMED CONSUME
   $("actionBtn").onclick = async () => {
     $("actionBtn").disabled = true;
-    $("status").innerText = "Fetching…";
+    $("status").innerText = "Decrypting…";
 
-    const res = await fetch(`${API}/fetch/${CODE}`);
+    const res = await fetch(`${API}/consume`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: CODE })
+    });
+
     if (!res.ok) {
       $("status").innerText = "❌ Expired or already used";
       return;
